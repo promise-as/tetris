@@ -25,7 +25,83 @@ var MODELS = [
       row: 1,
       col: 2
     },
-  }
+  },
+  // 第二个模型数据源（凸型）
+  {
+    0: {
+      row: 1,
+      col: 1
+    },
+    1: {
+      row: 0,
+      col: 0
+    },
+    2: {
+      row: 1,
+      col: 0
+    },
+    3: {
+      row: 2,
+      col: 0
+    },
+  },
+  // 第三个模型数据源（田型）
+  {
+    0: {
+      row: 1,
+      col: 1
+    },
+    1: {
+      row: 2,
+      col: 1
+    },
+    2: {
+      row: 1,
+      col: 2
+    },
+    3: {
+      row: 2,
+      col: 2
+    },
+  },
+  // 第四个模型数据源（一型）
+  {
+    0: {
+      row: 0,
+      col: 0
+    },
+    1: {
+      row: 0,
+      col: 1
+    },
+    2: {
+      row: 0,
+      col: 2
+    },
+    3: {
+      row: 0,
+      col: 3
+    },
+  },
+  // 第五个模型数据源（Z型）
+  {
+    0: {
+      row: 1,
+      col: 1
+    },
+    1: {
+      row: 1,
+      col: 2
+    },
+    2: {
+      row: 2,
+      col: 2
+    },
+    3: {
+      row: 2,
+      col: 3
+    },
+  },
 ]
 
 // 变量
@@ -37,6 +113,8 @@ var currentX = 0,
 // 记录所有块元素的位置
 // K=行_列 : V=块元素
 var fixedBlocks = {}
+// 定时器
+var mInterval = null;
 
 // 入口方法
 init();
@@ -47,8 +125,13 @@ function init() {
 
 // 根据模型的数据源来创建对应的块元素了
 function createModel() {
+  // 判断游戏是否已经结束了
+  if(isGameOver()){
+    gameOver();
+    return null;
+  }
   // 确定当前使用哪一个模型
-  currentModel = MODELS[0];
+  currentModel = MODELS[_.random(0, MODELS.length - 1)];
   // 重新初始化 16宫格的 位置
   currentX = 0;
   currentY = 0;
@@ -60,6 +143,7 @@ function createModel() {
   }
   // 定位块元素的位置
   locationBlocks();
+  autoDown();
 }
 
 // 根据数据源定位块元素的位置
@@ -113,6 +197,15 @@ function move(x, y) {
   // actvityModelEle.style.top = parseInt(actvityModelEle.style.top || 0) + y * STEP + 'px';
   // actvityModelEle.style.left = parseInt(actvityModelEle.style.left || 0) + x * STEP + 'px';
 
+  if (isMeet(currentX + x, currentY + y, currentModel)) {
+    // 底部的触碰发生在移动16宫格的时候，并且此次移动是因为 Y 轴的变化而引起的
+    if (y !== 0) {
+      // 模型之间底部发生触碰了
+      fixedBottomModel();
+    }
+    return;
+  }
+
   // 16宫格在动
   currentX += x;
   currentY += y;
@@ -126,15 +219,25 @@ function rotate() {
   // 旋转后的行 = 旋转前的列
   // 旋转后的列 = 3 - 旋转前的行
 
+  // 克隆以下 currentModel
+  var cloneCurrentModel = _.cloneDeep(currentModel);
+
   // 遍历我们的 模型数据源
-  for (var key in currentModel) {
+  for (var key in cloneCurrentModel) {
     // 块元素的数据源
-    var blockModel = currentModel[key];
+    var blockModel = cloneCurrentModel[key];
     // 实现我们的算法
     var temp = blockModel.row;
     blockModel.row = blockModel.col;
     blockModel.col = 3 - temp;
   }
+  // 如果旋转之后会发生触碰，那么就不需要进行旋转了
+  if (isMeet(currentX, currentY, cloneCurrentModel)) {
+    return;
+  }
+  // 接受了这次旋转
+  currentModel = cloneCurrentModel;
+
   // 重新排列
   locationBlocks();
 }
@@ -170,6 +273,7 @@ function fixedBottomModel() {
   // 1. 改变模型（中块元素）的样式
   // 2. 让模型不可以在进行移动
   var activityModelEles = document.getElementsByClassName('activity_model');
+  // 重点
   for (var i = activityModelEles.length - 1; i >= 0; i--) {
     // 拿到每个块元素
     var activityModelEle = activityModelEles[i];
@@ -179,6 +283,10 @@ function fixedBottomModel() {
     var blockModel = currentModel[i];
     fixedBlocks[(currentY + blockModel.row) + '_' + (currentX + blockModel.col)] = activityModelEle;
   }
+
+  // 判断是否要清理
+  isRemoveLine();
+
   // 3. 创建新的模型
   createModel();
 }
@@ -198,4 +306,94 @@ function isMeet(x, y, model) {
     }
   }
   return false;
+}
+
+// 判断一行是否被铺满
+function isRemoveLine() {
+  // 在一行中，每一列都存在块元素，那么该行就需要被清理了
+  // 遍历所有行中的所有列
+  // 遍历所有行
+  for (var i = 0; i < ROW_COUNT; i++) {
+    // 标记符，假设当前行已经被铺满了
+    var flag = true;
+    // 遍历当前行中的所有列
+    for (var j = 0; j < COL_COUNT; j++) {
+      // 如果当前行中有一列没有数据，那么就说明当前行没有被铺满
+      if (!fixedBlocks[i + '_' + j]) {
+        flag = false;
+        break;
+      }
+    }
+    if (flag) {
+      // 该行已经被铺满了
+      removeLine(i)
+    }
+  }
+}
+
+// 清理被铺满的这一行
+function removeLine(line) {
+  // 1. 删除该行中所有的块元素
+  // 2. 删除该行中所有块元素的数据源
+  // 遍历该行中的所有列
+  for (var i = 0; i < COL_COUNT; i++) {
+    // 1. 删除该行中所有的块元素
+    document.getElementById('container').removeChild(fixedBlocks[line + '_' + i]);
+    // 2. 删除该行中所有块元素的数据源
+    fixedBlocks[line + '_' + i] = null;
+  }
+  downLine(line);
+}
+
+// 让被清理行之上的块元素下落
+function downLine(line) {
+  // 1. 被清理行之上的所有块元素数据源所在的行数 + 1
+  // 2. 让块元素在容器中的位置下落
+  // 3. 清理掉之前的块元素
+
+  // 遍历被清理行之上的所有行
+  for (var i = line - 1; i >= 0; i--) {
+    // 该行中的所有列
+    for (var j = 0; j < COL_COUNT; j++) {
+      if (!fixedBlocks[i + '_' + j]) continue;
+      // 存在数据
+      // 1. 被清理行之上的所有块元素数据源所在的行数 + 1
+      fixedBlocks[(i + 1) + '_' + j] = fixedBlocks[i + '_' + j];
+      // 2. 让块元素在容器中的位置下落
+      fixedBlocks[(i + 1) + '_' + j].style.top = (i + 1) * STEP + 'px';
+      // 3. 清理掉之前的块元素
+      fixedBlocks[i + '_' + j] = null;
+    }
+  }
+}
+
+// 让模型自动下落
+function autoDown() {
+  if (mInterval) {
+    clearInterval(mInterval);
+  }
+  mInterval = setInterval(function () {
+    move(0, 1);
+  }, 600)
+}
+
+// 判断游戏结束
+function isGameOver() {
+  // 当第0行存在块元素的时候，表示游戏结束了
+  for (var i = 0; i < COL_COUNT; i++) {
+    if (fixedBlocks['0_' + i]) {
+      return true;
+    }
+  };
+  return false;
+}
+
+// 结束掉游戏
+function gameOver(){
+  // 1. 停止定时器
+  if(mInterval){
+    clearInterval(mInterval);
+  }
+  // 2. 弹出对话框
+  alert('大吉大利，今晚吃鸡！');
 }
